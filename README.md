@@ -14,7 +14,7 @@ python3 -m http.server 8080
 ```
 
 開啟 <http://127.0.0.1:8080/>。
-
+測試網址 : https://troy30222.github.io/seo_tool/
 ## 使用限制
 
 遠端網址檢測會使用公開 CORS 代理，因此可能受目標網站防火牆、CORS、robots 規範或代理服務穩定度影響。若網址抓取失敗，請改貼頁面 HTML 原始碼以取得完整檢測結果。正式商用建議搭配後端 crawler、排程檢測與 Lighthouse / PageSpeed API。
