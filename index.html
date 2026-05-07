@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SEO Compass｜免費 SEO 檢測、網站技術偵測與行銷工具</title>
+  <meta name="description" content="一套免費 SEO 工具網站：完整 SEO 檢測報告、網站使用技術與開店平台偵測，以及常用 SEO、內容、UTM、robots.txt 與 sitemap 工具。" />
+  <link rel="canonical" href="https://example.com/" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav" aria-label="主要導覽">
+      <a class="brand" href="#home" data-route="home" aria-label="SEO Compass 首頁">
+        <span class="brand-mark">SC</span>
+        <span>SEO Compass</span>
+      </a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks">☰</button>
+      <div id="navLinks" class="nav-links">
+        <a href="#seo-analyzer" data-route="seo-analyzer">SEO 完整檢測</a>
+        <a href="#tech-detector" data-route="tech-detector">網站技術查詢</a>
+        <a href="#seo-tools" data-route="seo-tools">SEO 工具箱</a>
+        <a href="#checklist" data-route="checklist">修正清單</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="page active hero">
+      <div class="hero-copy">
+        <p class="eyebrow">免費、免註冊、以行動建議為核心</p>
+        <h1>完整檢測網站 SEO 問題，找出該修正的每一項。</h1>
+        <p class="hero-text">參考專業 SEO Analyzer、平台偵測與 SEO Review Tools 的工作流程，整合頁面 SEO、技術 SEO、內容品質、結構化資料與網站技術辨識。</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#seo-analyzer" data-route="seo-analyzer">開始 SEO 檢測</a>
+          <a class="button secondary" href="#tech-detector" data-route="tech-detector">查詢網站用什麼做的</a>
+        </div>
+      </div>
+      <div class="score-card" aria-label="範例 SEO 分數">
+        <div class="score-ring"><span>86</span><small>/100</small></div>
+        <h2>SEO 健康分數</h2>
+        <p>即時列出通過、警告、錯誤與優先修正項目。</p>
+        <ul>
+          <li>Meta / 標題 / Heading</li>
+          <li>索引 / Canonical / Robots</li>
+          <li>圖片 Alt / 連結 / Schema</li>
+          <li>平台、CMS、分析工具偵測</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="seo-analyzer" class="page tool-section">
+      <div class="section-heading">
+        <p class="eyebrow">SEO Analyzer</p>
+        <h1>網站 SEO 完整檢測</h1>
+        <p>輸入網址或貼上 HTML，即可產生包含問題、分數、優先級與修正建議的 SEO 報告。網址抓取會使用公開 CORS 代理，若目標網站封鎖請改貼 HTML。</p>
+      </div>
+      <form id="analyzerForm" class="input-panel">
+        <label for="targetUrl">網站網址</label>
+        <div class="inline-control">
+          <input id="targetUrl" name="targetUrl" type="url" placeholder="https://example.com" autocomplete="url" />
+          <button class="button primary" type="submit">分析</button>
+        </div>
+        <label for="htmlInput">或貼上頁面 HTML</label>
+        <textarea id="htmlInput" rows="7" placeholder="貼上 &lt;!doctype html&gt;... 可獲得最完整、最穩定的檢測結果"></textarea>
+      </form>
+      <div id="analysisStatus" class="status" role="status"></div>
+      <div id="analysisOutput" class="results-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="tech-detector" class="page tool-section">
+      <div class="section-heading">
+        <p class="eyebrow">BuiltWith-style Detector</p>
+        <h1>查詢網站是用什麼做的</h1>
+        <p>偵測 CMS、電商平台、前端框架、分析追蹤、CDN、付款工具與常見台灣開店系統線索。</p>
+      </div>
+      <form id="techForm" class="input-panel">
+        <label for="techUrl">網站網址</label>
+        <div class="inline-control">
+          <input id="techUrl" type="url" placeholder="https://shop.example.com" autocomplete="url" />
+          <button class="button primary" type="submit">偵測技術</button>
+        </div>
+        <label for="techHtml">或貼上 HTML / script / header 片段</label>
+        <textarea id="techHtml" rows="7" placeholder="貼上頁面原始碼可偵測更多平台，例如 Shopify、WooCommerce、SHOPLINE、91APP、Cyberbiz、WACA、QDM、Magento、Wix..."></textarea>
+      </form>
+      <div id="techStatus" class="status" role="status"></div>
+      <div id="techOutput" class="tech-results" aria-live="polite"></div>
+    </section>
+
+    <section id="seo-tools" class="page tool-section">
+      <div class="section-heading">
+        <p class="eyebrow">SEO Tools</p>
+        <h1>常用 SEO 工具箱</h1>
+        <p>把日常 SEO 工作需要的小工具集中在同一頁：SERP 預覽、Meta 檢查、關鍵字密度、robots.txt、sitemap 與 UTM 產生器。</p>
+      </div>
+      <div class="tools-grid">
+        <article class="tool-card">
+          <h2>SERP 標題與描述預覽</h2>
+          <input id="serpTitle" placeholder="頁面標題" maxlength="90" />
+          <textarea id="serpDesc" placeholder="Meta description" rows="3" maxlength="220"></textarea>
+          <div class="serp-preview">
+            <p id="serpPreviewTitle">你的頁面標題會顯示在這裡</p>
+            <span>example.com/page</span>
+            <p id="serpPreviewDesc">描述會顯示在這裡，建議清楚說明頁面價值並包含自然關鍵字。</p>
+          </div>
+          <small id="serpCounter">標題 0 字；描述 0 字</small>
+        </article>
+        <article class="tool-card">
+          <h2>關鍵字密度分析</h2>
+          <textarea id="densityText" rows="8" placeholder="貼上文章內容"></textarea>
+          <button id="densityBtn" class="button secondary" type="button">計算密度</button>
+          <div id="densityOutput" class="mini-output"></div>
+        </article>
+        <article class="tool-card">
+          <h2>robots.txt 產生器</h2>
+          <input id="robotsSitemap" placeholder="Sitemap URL，例如 https://example.com/sitemap.xml" />
+          <select id="robotsMode">
+            <option value="allow">允許搜尋引擎索引全站</option>
+            <option value="block-private">封鎖 /admin、/cart、/checkout</option>
+            <option value="block-all">封鎖所有爬蟲</option>
+          </select>
+          <button id="robotsBtn" class="button secondary" type="button">產生</button>
+          <pre id="robotsOutput" class="code-output"></pre>
+        </article>
+        <article class="tool-card">
+          <h2>Sitemap URL 清單產生器</h2>
+          <input id="siteRoot" placeholder="https://example.com" />
+          <textarea id="pathsInput" rows="5" placeholder="每行一個路徑，例如 /
+/about
+/blog/seo-guide"></textarea>
+          <button id="sitemapBtn" class="button secondary" type="button">產生 XML</button>
+          <pre id="sitemapOutput" class="code-output"></pre>
+        </article>
+        <article class="tool-card wide">
+          <h2>UTM 追蹤網址產生器</h2>
+          <div class="utm-grid">
+            <input id="utmUrl" placeholder="目標網址" />
+            <input id="utmSource" placeholder="utm_source，例如 google" />
+            <input id="utmMedium" placeholder="utm_medium，例如 cpc" />
+            <input id="utmCampaign" placeholder="utm_campaign，例如 spring_sale" />
+          </div>
+          <button id="utmBtn" class="button secondary" type="button">產生 UTM</button>
+          <output id="utmOutput" class="link-output"></output>
+        </article>
+      </div>
+    </section>
+
+    <section id="checklist" class="page tool-section">
+      <div class="section-heading">
+        <p class="eyebrow">SEO Fix Checklist</p>
+        <h1>SEO 修正項目總清單</h1>
+        <p>依「高影響、低成本」排序，可作為每次網站上線與內容發佈前的 QA 清單。</p>
+      </div>
+      <div id="checklistGrid" class="checklist-grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>SEO Compass 是前端開源工具範例。遠端網站檢測受 CORS、robots 與目標網站防護影響；正式商用建議搭配後端 crawler 與 Lighthouse API。</p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
