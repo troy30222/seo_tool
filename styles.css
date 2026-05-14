@@ -135,6 +135,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shad
 .small-score { width: 7.5rem; height: 7.5rem; }
 .tech-results, .tools-grid, .checklist-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
 .tech-group, .tool-card, .check-card { padding: 1.2rem; grid-column: span 4; }
+.tech-group.full { grid-column: 1 / -1; }
 .tool-card.wide { grid-column: span 8; }
 .tech-item { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--line); }
 .tech-item:last-child { border-bottom: 0; }
