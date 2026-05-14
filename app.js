@@ -60,12 +60,150 @@ $('.nav-toggle').addEventListener('click', () => {
   $('.nav-toggle').setAttribute('aria-expanded', String(isOpen));
 });
 
+const MAX_CRAWL_PAGES = 80;
+const MAX_ASSET_FETCHES = 80;
+const REQUEST_TIMEOUT_MS = 20000;
+
+function normalizeUrl(value = '', base = '') {
+  const input = value.trim();
+  if (!input) throw new Error('請輸入有效網址。');
+  const withProtocol = (base || /^https?:\/\//i.test(input)) ? input : `https://${input}`;
+  const url = new URL(withProtocol, base || undefined);
+  url.hash = '';
+  return url.toString();
+}
+
+function sameOrigin(url, origin) {
+  try { return new URL(url).origin === origin; } catch { return false; }
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+async function fetchRaw(url, message = '無法讀取目標網站，請貼上 HTML 後再分析。') {
+  const normalized = normalizeUrl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(normalized)}`;
+    const response = await fetch(proxy, { signal: controller.signal });
+    if (!response.ok) throw new Error(message);
+    return { text: await response.text(), url: normalized };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchHtml(url) {
-  const normalized = url.startsWith('http') ? url : `https://${url}`;
-  const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(normalized)}`;
-  const response = await fetch(proxy);
-  if (!response.ok) throw new Error('無法讀取目標網站，請貼上 HTML 後再分析。');
-  return { html: await response.text(), url: normalized };
+  const result = await fetchRaw(url);
+  return { html: result.text, url: result.url };
+}
+
+function extractInternalLinks(html, pageUrl, origin) {
+  const doc = parseDocument(html);
+  return unique($$('a[href]', doc).map(link => {
+    const href = link.getAttribute('href') || '';
+    if (/^(mailto:|tel:|javascript:|#)/i.test(href)) return '';
+    try { return normalizeUrl(href, pageUrl); } catch { return ''; }
+  }).filter(url => sameOrigin(url, origin)));
+}
+
+function extractPageAssets(html, pageUrl, origin) {
+  const doc = parseDocument(html);
+  const scripts = $$('script[src]', doc).map(script => script.getAttribute('src'));
+  const styles = $$('link[rel~="stylesheet" i][href], link[as="style" i][href]', doc).map(link => link.getAttribute('href'));
+  return unique([...scripts, ...styles].map(src => {
+    try { return normalizeUrl(src, pageUrl); } catch { return ''; }
+  }).filter(url => sameOrigin(url, origin)));
+}
+
+function parseSitemapUrls(xmlText, origin) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const locs = $$('loc', doc).map(loc => loc.textContent.trim());
+  return unique(locs.filter(url => sameOrigin(url, origin)));
+}
+
+async function discoverSitemapUrls(rootUrl, origin, onProgress = () => {}) {
+  const root = new URL(rootUrl);
+  const candidates = [`${root.origin}/sitemap.xml`];
+  try {
+    const robots = await fetchRaw(`${root.origin}/robots.txt`, 'robots.txt 無法讀取。');
+    const robotsSitemaps = robots.text.split(/\r?\n/)
+      .map(line => line.match(/^\s*sitemap\s*:\s*(.+)$/i)?.[1]?.trim())
+      .filter(Boolean);
+    candidates.push(...robotsSitemaps);
+  } catch {
+    // robots.txt is optional; continue with common sitemap location.
+  }
+
+  const queue = unique(candidates);
+  const discovered = [];
+  const visited = new Set();
+  while (queue.length && visited.size < 20) {
+    const sitemapUrl = queue.shift();
+    if (visited.has(sitemapUrl)) continue;
+    visited.add(sitemapUrl);
+    try {
+      onProgress(`讀取 sitemap：${sitemapUrl}`);
+      const sitemap = await fetchRaw(sitemapUrl, 'sitemap 無法讀取。');
+      const urls = parseSitemapUrls(sitemap.text, origin);
+      const nestedSitemaps = urls.filter(url => /sitemap|\.xml(\.gz)?$/i.test(url));
+      const pageUrls = urls.filter(url => !nestedSitemaps.includes(url));
+      discovered.push(...pageUrls);
+      queue.push(...nestedSitemaps.filter(url => !visited.has(url)));
+    } catch {
+      // Some sites omit sitemaps or block proxy access; link crawling still runs.
+    }
+  }
+  return unique(discovered);
+}
+
+async function fetchWebsiteSnapshot(startUrl, onProgress = () => {}) {
+  const rootUrl = normalizeUrl(startUrl);
+  const origin = new URL(rootUrl).origin;
+  const sitemapUrls = await discoverSitemapUrls(rootUrl, origin, onProgress);
+  const queue = unique([rootUrl, ...sitemapUrls]);
+  const pages = [];
+  const assets = [];
+  const visitedPages = new Set();
+  const visitedAssets = new Set();
+  let skipped = 0;
+
+  while (queue.length && pages.length < MAX_CRAWL_PAGES) {
+    const pageUrl = queue.shift();
+    if (visitedPages.has(pageUrl) || !sameOrigin(pageUrl, origin)) continue;
+    visitedPages.add(pageUrl);
+    try {
+      onProgress(`載入頁面 ${pages.length + 1}/${Math.min(queue.length + pages.length + 1, MAX_CRAWL_PAGES)}：${pageUrl}`);
+      const page = await fetchHtml(pageUrl);
+      pages.push(page);
+      extractInternalLinks(page.html, page.url, origin).forEach(link => {
+        if (!visitedPages.has(link) && !queue.includes(link)) queue.push(link);
+      });
+      extractPageAssets(page.html, page.url, origin).forEach(assetUrl => {
+        if (!visitedAssets.has(assetUrl) && visitedAssets.size < MAX_ASSET_FETCHES) {
+          visitedAssets.add(assetUrl);
+          assets.push({ url: assetUrl, promise: fetchRaw(assetUrl, '資源無法讀取。').catch(error => ({ url: assetUrl, text: '', error: error.message })) });
+        }
+      });
+    } catch (error) {
+      skipped += 1;
+      onProgress(`略過無法讀取頁面：${pageUrl}`);
+    }
+  }
+
+  const loadedAssets = await Promise.all(assets.map(asset => asset.promise));
+  return {
+    url: rootUrl,
+    origin,
+    pages,
+    assets: loadedAssets,
+    discoveredCount: unique([...visitedPages, ...queue]).length,
+    skipped,
+    capped: queue.length > 0,
+    maxPages: MAX_CRAWL_PAGES,
+  };
 }
 
 function parseDocument(html) {
@@ -80,7 +218,8 @@ function analyzeSeo(html, url = '') {
   const title = doc.querySelector('title')?.textContent.trim() || '';
   const description = doc.querySelector('meta[name="description" i]')?.content.trim() || '';
   const h1s = $$('h1', doc).map(h => h.textContent.trim()).filter(Boolean);
-  const canonical = doc.querySelector('link[rel="canonical" i]')?.href || '';
+  const canonicalHref = doc.querySelector('link[rel="canonical" i]')?.getAttribute('href') || '';
+  const canonical = canonicalHref ? normalizeUrl(canonicalHref, url || location.href) : '';
   const robots = doc.querySelector('meta[name="robots" i]')?.content || '未設定';
   const viewport = doc.querySelector('meta[name="viewport" i]')?.content || '';
   const imgs = $$('img', doc);
@@ -90,11 +229,14 @@ function analyzeSeo(html, url = '') {
   const ogCount = $$('meta[property^="og:" i]', doc).length;
   const twitterCount = $$('meta[name^="twitter:" i]', doc).length;
   const lang = doc.documentElement.getAttribute('lang') || '';
-  const favicon = doc.querySelector('link[rel*="icon" i]')?.href || '';
-  const links = $$('a[href]', doc);
-  let host = '';
-  try { host = url ? new URL(url).hostname : ''; } catch { host = ''; }
-  const internalLinks = host ? links.filter(a => a.href.includes(host)).length : 0;
+  const faviconHref = doc.querySelector('link[rel*="icon" i]')?.getAttribute('href') || '';
+  const favicon = faviconHref ? normalizeUrl(faviconHref, url || location.href) : '';
+  const links = $$('a[href]', doc).map(link => {
+    try { return normalizeUrl(link.getAttribute('href') || '', url || location.href); } catch { return ''; }
+  }).filter(Boolean);
+  let origin = '';
+  try { origin = url ? new URL(url).origin : ''; } catch { origin = ''; }
+  const internalLinks = origin ? links.filter(link => sameOrigin(link, origin)).length : 0;
   const externalLinks = links.length - internalLinks;
   const bodyText = doc.body?.innerText || doc.body?.textContent || '';
   const wordCount = (bodyText.match(/[\p{L}\p{N}]+/gu) || []).length;
@@ -117,13 +259,61 @@ function analyzeSeo(html, url = '') {
   return { title, description, checks, score: Math.min(score, 100), headings, wordCount, links: { total: links.length, internalLinks, externalLinks }, url };
 }
 
+function mergeCheckStatus(checks, key) {
+  const items = checks.map(report => report.checks.find(check => check.key === key)).filter(Boolean);
+  if (items.some(item => item.status === 'fail')) return 'fail';
+  if (items.some(item => item.status === 'warn')) return 'warn';
+  return 'pass';
+}
+
+function buildSeoReportFromSnapshot(snapshot) {
+  if (!snapshot.pages.length) throw new Error('沒有可分析的頁面，請確認網址可公開讀取或改貼 HTML。');
+  const pageReports = snapshot.pages.map(page => analyzeSeo(page.html, page.url));
+  const averageScore = Math.round(pageReports.reduce((sum, report) => sum + report.score, 0) / pageReports.length);
+  const homeReport = pageReports[0];
+  const checks = seoChecks.map(meta => {
+    const status = mergeCheckStatus(pageReports, meta.key);
+    const failedCount = pageReports.filter(report => report.checks.find(check => check.key === meta.key)?.status === 'fail').length;
+    const warnedCount = pageReports.filter(report => report.checks.find(check => check.key === meta.key)?.status === 'warn').length;
+    const detail = status === 'pass'
+      ? `已檢查 ${pageReports.length} 頁，全部通過。`
+      : `已檢查 ${pageReports.length} 頁；需修正 ${failedCount} 頁，警告 ${warnedCount} 頁。`;
+    return { key: meta.key, status, detail };
+  });
+  const totals = pageReports.reduce((acc, report) => {
+    acc.wordCount += report.wordCount;
+    acc.links.total += report.links.total;
+    acc.links.internalLinks += report.links.internalLinks;
+    acc.links.externalLinks += report.links.externalLinks;
+    return acc;
+  }, { wordCount: 0, links: { total: 0, internalLinks: 0, externalLinks: 0 } });
+  return {
+    ...homeReport,
+    checks,
+    score: averageScore,
+    wordCount: totals.wordCount,
+    links: totals.links,
+    pages: pageReports,
+    crawl: snapshot,
+  };
+}
+
 function renderAnalysis(report) {
   const failing = report.checks.filter(c => c.status !== 'pass');
+  const crawlSummary = report.crawl ? `
+    <article class="result-card full"><h3>${statusBadge(report.crawl.capped ? 'warn' : 'info')} 爬取摘要</h3><ul class="metric-list">
+      <li><strong>已完整載入：</strong>${report.crawl.pages.length} 個可讀取頁面、${report.crawl.assets.length} 個同網域 JS/CSS 資源。</li>
+      <li><strong>探索來源：</strong>起始網址、robots.txt 內 sitemap、/sitemap.xml 與頁面內部連結。</li>
+      <li><strong>狀態：</strong>${report.crawl.capped ? `已達前端安全上限 ${report.crawl.maxPages} 頁，仍有佇列中的網址未載入。` : '所有已發現且可由代理讀取的網址都已載入完成後才評分。'}${report.crawl.skipped ? ` 略過 ${report.crawl.skipped} 個無法讀取網址。` : ''}</li>
+    </ul></article>` : '';
+  const pageBreakdown = report.pages ? `
+    <article class="result-card full"><h3>${statusBadge('info')} 分頁 SEO 分數</h3><ul class="metric-list">${report.pages.map(page => `<li><strong>${page.score}/100</strong> ${escapeHtml(page.url)}</li>`).join('')}</ul></article>` : '';
   $('#analysisOutput').innerHTML = `
     <article class="result-card full score-summary">
       <div class="score-ring small-score" style="background: conic-gradient(${report.score >= 80 ? 'var(--ok)' : report.score >= 55 ? 'var(--warn)' : 'var(--bad)'} 0 ${report.score}%, rgba(255,255,255,.12) ${report.score}% 100%)"><span>${report.score}</span><small>/100</small></div>
-      <div><h2>SEO 健康分數</h2><p class="hero-text">${failing.length ? `找到 ${failing.length} 個建議修正項目，請優先處理高優先級項目。` : '所有核心項目皆通過。'}</p></div>
+      <div><h2>${report.pages ? '整站 SEO 平均分數' : 'SEO 健康分數'}</h2><p class="hero-text">${failing.length ? `找到 ${failing.length} 個建議修正項目，請優先處理高優先級項目。` : '所有核心項目皆通過。'}</p></div>
     </article>
+    ${crawlSummary}
     <article class="result-card"><h3>${statusBadge('info')} 核心指標</h3><ul class="metric-list">
       <li><strong>字數：</strong>${report.wordCount}</li><li><strong>連結：</strong>${report.links.total}（內部 ${report.links.internalLinks} / 外部 ${report.links.externalLinks}）</li><li><strong>Title：</strong>${report.title || '未設定'}</li><li><strong>Description：</strong>${report.description || '未設定'}</li>
     </ul></article>
@@ -131,7 +321,8 @@ function renderAnalysis(report) {
     <article class="result-card full"><h3>${statusBadge('fail')} SEO 修正建議</h3><ul class="fix-list">${report.checks.map(check => {
       const meta = seoChecks.find(item => item.key === check.key);
       return `<li>${statusBadge(check.status)} <strong>${meta.label}</strong>（${meta.category}｜優先級：${meta.priority}）<br>${escapeHtml(check.detail)}<br><strong>建議：</strong>${meta.fix}</li>`;
-    }).join('')}</ul></article>`;
+    }).join('')}</ul></article>
+    ${pageBreakdown}`;
 }
 
 $('#analyzerForm').addEventListener('submit', async event => {
@@ -141,9 +332,14 @@ $('#analyzerForm').addEventListener('submit', async event => {
   try {
     const pasted = $('#htmlInput').value.trim();
     const url = $('#targetUrl').value.trim();
-    const payload = pasted ? { html: pasted, url } : await fetchHtml(url);
-    renderAnalysis(analyzeSeo(payload.html, payload.url));
-    $('#analysisStatus').textContent = '分析完成。';
+    if (pasted) {
+      renderAnalysis(analyzeSeo(pasted, url));
+      $('#analysisStatus').textContent = '分析完成。';
+      return;
+    }
+    const snapshot = await fetchWebsiteSnapshot(url, message => { $('#analysisStatus').textContent = message; });
+    renderAnalysis(buildSeoReportFromSnapshot(snapshot));
+    $('#analysisStatus').textContent = `分析完成：已載入 ${snapshot.pages.length} 頁與 ${snapshot.assets.length} 個資源。`;
   } catch (error) {
     $('#analysisStatus').textContent = error.message;
   }
@@ -157,11 +353,13 @@ function detectTech(html, url = '') {
   }).filter(Boolean).sort((a, b) => b.confidence - a.confidence);
 }
 
-function renderTech(results) {
+function renderTech(results, snapshot = null) {
   const grouped = results.reduce((acc, item) => ((acc[item.category] ||= []).push(item), acc), {});
-  $('#techOutput').innerHTML = Object.entries(grouped).map(([category, items]) => `
+  const summary = snapshot ? `
+    <article class="tech-group full"><h2>載入摘要</h2><p class="hero-text">已先載入 ${snapshot.pages.length} 個可讀取頁面與 ${snapshot.assets.length} 個同網域 JS/CSS 資源，再進行技術指紋比對。${snapshot.capped ? `已達前端安全上限 ${snapshot.maxPages} 頁。` : '所有已發現且可讀取網址已載入完成。'}</p></article>` : '';
+  $('#techOutput').innerHTML = summary + (Object.entries(grouped).map(([category, items]) => `
     <article class="tech-group"><h2>${category}</h2>${items.map(item => `<div class="tech-item"><span><strong>${item.name}</strong><br><small>命中：${item.hits.map(escapeHtml).join(', ')}</small></span><span class="confidence">${item.confidence}%</span></div>`).join('')}</article>
-  `).join('') || '<article class="tech-group"><h2>未偵測到明確技術</h2><p class="hero-text">請貼上更多 HTML 原始碼，或使用可由瀏覽器讀取的公開網址。</p></article>';
+  `).join('') || '<article class="tech-group"><h2>未偵測到明確技術</h2><p class="hero-text">請貼上更多 HTML 原始碼，或使用可由瀏覽器讀取的公開網址。</p></article>');
 }
 
 $('#techForm').addEventListener('submit', async event => {
@@ -170,9 +368,20 @@ $('#techForm').addEventListener('submit', async event => {
   try {
     const pasted = $('#techHtml').value.trim();
     const url = $('#techUrl').value.trim();
-    const payload = pasted ? { html: pasted, url } : await fetchHtml(url);
-    renderTech(detectTech(payload.html, payload.url));
-    $('#techStatus').textContent = '偵測完成。';
+    if (pasted) {
+      renderTech(detectTech(pasted, url));
+      $('#techStatus').textContent = '偵測完成。';
+      return;
+    }
+    const snapshot = await fetchWebsiteSnapshot(url, message => { $('#techStatus').textContent = message; });
+    const combinedHtml = [
+      ...snapshot.pages.map(page => `<!-- ${page.url} -->
+${page.html}`),
+      ...snapshot.assets.map(asset => `/* ${asset.url} */
+${asset.text || ''}`),
+    ].join('\n');
+    renderTech(detectTech(combinedHtml, snapshot.url), snapshot);
+    $('#techStatus').textContent = `偵測完成：已載入 ${snapshot.pages.length} 頁與 ${snapshot.assets.length} 個 JS/CSS 資源。`;
   } catch (error) {
     $('#techStatus').textContent = error.message;
   }

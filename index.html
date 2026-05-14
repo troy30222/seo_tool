@@ -53,7 +53,7 @@
       <div class="section-heading">
         <p class="eyebrow">SEO Analyzer</p>
         <h1>網站 SEO 完整檢測</h1>
-        <p>輸入網址或貼上 HTML，即可產生包含問題、分數、優先級與修正建議的 SEO 報告。網址抓取會使用公開 CORS 代理，若目標網站封鎖請改貼 HTML。</p>
+        <p>輸入網址會先爬取 robots.txt、sitemap.xml、站內連結與同網域 JS/CSS，等所有可讀取內容載入完成後，再產生整站 SEO 分數、問題、優先級與修正建議。若目標網站封鎖代理，請改貼 HTML。</p>
       </div>
       <form id="analyzerForm" class="input-panel">
         <label for="targetUrl">網站網址</label>
@@ -72,7 +72,7 @@
       <div class="section-heading">
         <p class="eyebrow">BuiltWith-style Detector</p>
         <h1>查詢網站是用什麼做的</h1>
-        <p>偵測 CMS、電商平台、前端框架、分析追蹤、CDN、付款工具與常見台灣開店系統線索。</p>
+        <p>輸入網址會先完整載入可發現頁面與同網域 JS/CSS，再偵測 CMS、電商平台、前端框架、分析追蹤、CDN、付款工具與常見台灣開店系統線索。</p>
       </div>
       <form id="techForm" class="input-panel">
         <label for="techUrl">網站網址</label>
@@ -156,7 +156,7 @@
   </main>
 
   <footer class="footer">
-    <p>SEO Compass 是前端開源工具範例。遠端網站檢測受 CORS、robots 與目標網站防護影響；正式商用建議搭配後端 crawler 與 Lighthouse API。</p>
+    <p>SEO Compass 是前端開源工具範例。遠端網站檢測會盡量爬取 sitemap、站內連結與同網域資源；仍可能受 CORS、robots、代理與目標網站防護影響，正式商用建議搭配後端 crawler 與 Lighthouse API。</p>
   </footer>
 
   <script src="app.js" defer></script>
